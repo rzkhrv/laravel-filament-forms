@@ -539,22 +539,6 @@ class Select extends Field
             );
         });
 
-        $this->getOptionLabelUsing(static function (Select $component, $value) {
-            $relationship = $component->getRelationship();
-
-            $record = $relationship->getRelated()->query()->where($relationship->getOwnerKeyName(), $value)->first();
-
-            if (! $record) {
-                return null;
-            }
-
-            if ($component->hasOptionLabelFromRecordUsingCallback()) {
-                return $component->getOptionLabelFromRecord($record);
-            }
-
-            return $record->getAttributeValue($component->getRelationshipTitleColumnName());
-        });
-
         $this->getOptionLabelsUsing(static function (Select $component, array $values): array {
             $relationship = $component->getRelationship();
             $relatedKeyName = $relationship->getRelatedKeyName();
@@ -572,6 +556,35 @@ class Select extends Field
             }
 
             return $relationshipQuery
+                ->get()
+                ->pluck($component->getRelationshipTitleColumnName(), $relatedKeyName)
+                ->toArray();
+        });
+
+        $this->getOptionLabelsUsing(static function (Select $component, array $values) use ($callback): array {
+            $relationship = $component->getRelationship();
+            $relatedKeyName = $relationship->getRelatedKeyName();
+            $relationshipQuery = $relationship->getRelated()->query();
+
+            if ($callback) {
+                $relationshipQuery = $component->evaluate($callback, [
+                    'query' => $relationshipQuery,
+                ]);
+            } else {
+                $relationshipQuery = $relationshipQuery->whereIn($relatedKeyName, $values);
+            }
+
+            if ($component->hasOptionLabelFromRecordUsingCallback()) {
+                return $relationshipQuery
+                    ->get()
+                    ->mapWithKeys(static fn (Model $record) => [
+                        $record->{$relatedKeyName} => $component->getOptionLabelFromRecord($record),
+                    ])
+                    ->toArray();
+            }
+
+            return $relationshipQuery
+                ->get()
                 ->pluck($component->getRelationshipTitleColumnName(), $relatedKeyName)
                 ->toArray();
         });
